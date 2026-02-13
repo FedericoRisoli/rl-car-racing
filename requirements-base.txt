@@ -1,0 +1,4 @@
+numpy==1.26.4
+pygame
+gymnasium==0.29.0
+gymnasium[box2d]==0.29.0
