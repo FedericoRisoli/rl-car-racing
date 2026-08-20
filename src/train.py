@@ -5,6 +5,15 @@ from stable_baselines3 import PPO, DQN
 
 from env import make_env
 
+# Funzione utilizzata per attribuire nomi standard ai modelli
+def format_timesteps(timesteps: int) -> str:
+    if timesteps % 1_000_000 == 0:
+        return f"{timesteps // 1_000_000}M"
+
+    if timesteps % 1_000 == 0:
+        return f"{timesteps // 1_000}k"
+
+    return str(timesteps)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -22,6 +31,11 @@ def main():
         "--seed",
         type=int,
         default=0,
+    )
+    parser.add_argument(
+        "--run-type",
+        choices=["smoke", "pilot", "final"],
+        default="smoke",
     )
 
     args = parser.parse_args()
@@ -53,8 +67,10 @@ def main():
 
     model.learn(total_timesteps=args.timesteps)
 
+    timesteps_label = format_timesteps(args.timesteps)
+
     model.save(
-        f"models/{args.algo}_smoke_seed_{args.seed}"
+    f"models/{args.algo}_{args.run_type}_{timesteps_label}_seed_{args.seed}"
     )
 
     env.close()
