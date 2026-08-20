@@ -1,0 +1,4 @@
+algorithm,model_path,training_seed,evaluation_seed,episode,episode_reward,episode_length,completed,termination_reason,visited_tiles,total_tiles,track_completion,lap_complete_percent,terminated,truncated,deterministic
+dqn,models\dqn_smoke_seed_0.zip,0,100,1,6.795952689486739e-13,1000,0,time_limit,27,270,0.1,0.95,0,1,1
+dqn,models\dqn_smoke_seed_0.zip,0,101,2,-30.693069306931516,1000,0,time_limit,21,303,0.06930693069306931,0.95,0,1,1
+dqn,models\dqn_smoke_seed_0.zip,0,102,3,14.695340501793535,1000,0,time_limit,32,279,0.11469534050179211,0.95,0,1,1
