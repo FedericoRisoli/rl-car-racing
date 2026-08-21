@@ -5,7 +5,7 @@ import os
 import numpy as np
 
 from stable_baselines3 import PPO, DQN
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
 
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
@@ -196,7 +196,7 @@ def main():
     parser.add_argument(
         "--run-type",
         choices=["smoke", "pilot", "final"],
-        required = True,
+        required=True,
     )
 
     # Ogni quanti timesteps effettuare la valutazione del modello
@@ -214,11 +214,30 @@ def main():
         default=[100, 101, 102, 103, 104],
     )
 
+    # Ogni quanti timesteps salvare un checkpoint del modello
+    parser.add_argument(
+        "--checkpoint-freq",
+        type=int,
+        default=50_000,
+    )
+
     args = parser.parse_args()
 
     # Creo un'etichetta compatta per il numero di timesteps e costruisco un identificatore univoco del training
     timesteps_label = format_timesteps(args.timesteps)
-    run_name = (f"{args.algo}_{args.run_type}_{timesteps_label}_seed_{args.seed}")
+    run_name = f"{args.algo}_{args.run_type}_{timesteps_label}_seed_{args.seed}"
+
+    # Cartella dedicata ai checkpoint di questo training
+    checkpoint_dir = os.path.join(
+        "checkpoints",
+        run_name,
+    )
+    
+    os.makedirs(
+        checkpoint_dir,
+        exist_ok=True,
+    )
+
 
     env = make_env()
 
@@ -235,7 +254,7 @@ def main():
     log_dir = os.path.join("logs", run_name)
 
     # Mostra i log nel terminale e li salva anche in formato CSV
-    logger = configure(log_dir, ["stdout","csv"])
+    logger = configure(log_dir, ["stdout", "csv"])
 
     if args.algo == "ppo":
         model = PPO(
@@ -270,10 +289,23 @@ def main():
         verbose=1,
     )     
 
+    # Salva periodicamente una copia intermedia del modello
+    checkpoint_callback = CheckpointCallback(
+        save_freq=args.checkpoint_freq,
+        save_path=checkpoint_dir,
+        name_prefix=run_name,
+        save_replay_buffer=False,
+        save_vecnormalize=False,
+        verbose=2,
+    )
+
     # Avvia il training ed esegue periodicamente l'evaluation.
     model.learn(
         total_timesteps=args.timesteps,
-        callback=eval_callback,
+        callback=[
+            eval_callback,
+            checkpoint_callback,
+        ],
     )
 
     # Salva il modello al termine del training.
