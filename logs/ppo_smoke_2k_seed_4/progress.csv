@@ -1,0 +1,4 @@
+time/total_timesteps,eval/mean_reward,eval/mean_ep_length,rollout/ep_rew_mean,time/time_elapsed,rollout/ep_len_mean,time/fps,time/iterations
+1000,-92.50841750000001,1000.0,,,,,
+2000,-92.929293,1000.0,,,,,
+2048,,,-52.77873099999999,252,1000.0,8,1
