@@ -214,30 +214,28 @@ def main():
         default=[100, 101, 102, 103, 104],
     )
 
-    # Ogni quanti timesteps salvare un checkpoint del modello
+    # Frequenza dei checkpoint; se omessa viene scelta in base al tipo di training
     parser.add_argument(
         "--checkpoint-freq",
         type=int,
-        default=50_000,
+        default=None,
     )
 
     args = parser.parse_args()
 
+    # Determina automaticamente la frequenza dei checkpoint
+    if args.checkpoint_freq is not None:
+        checkpoint_freq = args.checkpoint_freq
+    elif args.run_type == "smoke":
+        checkpoint_freq = None
+    elif args.run_type == "pilot":
+        checkpoint_freq = max(1, args.timesteps // 4)
+    else:
+        checkpoint_freq = max(1, args.timesteps // 10)
+
     # Creo un'etichetta compatta per il numero di timesteps e costruisco un identificatore univoco del training
     timesteps_label = format_timesteps(args.timesteps)
     run_name = f"{args.algo}_{args.run_type}_{timesteps_label}_seed_{args.seed}"
-
-    # Cartella dedicata ai checkpoint di questo training
-    checkpoint_dir = os.path.join(
-        "checkpoints",
-        run_name,
-    )
-    
-    os.makedirs(
-        checkpoint_dir,
-        exist_ok=True,
-    )
-
 
     env = make_env()
 
@@ -289,23 +287,40 @@ def main():
         verbose=1,
     )     
 
-    # Salva periodicamente una copia intermedia del modello
-    checkpoint_callback = CheckpointCallback(
-        save_freq=args.checkpoint_freq,
-        save_path=checkpoint_dir,
-        name_prefix=run_name,
-        save_replay_buffer=False,
-        save_vecnormalize=False,
-        verbose=2,
-    )
+    # Callback eseguiti durante il training
+    callbacks = [
+        eval_callback,
+    ]
 
-    # Avvia il training ed esegue periodicamente l'evaluation.
+    # Aggiunge i checkpoint solo quando previsti
+    if checkpoint_freq is not None:
+        checkpoint_dir = os.path.join(
+            "checkpoints",
+            run_name,
+        )
+
+        os.makedirs(
+            checkpoint_dir,
+            exist_ok=True,
+        )
+
+        checkpoint_callback = CheckpointCallback(
+            save_freq=checkpoint_freq,
+            save_path=checkpoint_dir,
+            name_prefix=run_name,
+            save_replay_buffer=(args.algo == "dqn"),
+            save_vecnormalize=False,
+            verbose=2,
+        )
+
+        callbacks.append(checkpoint_callback)
+
+
+
+    # Avvia il training con i callback configurati.
     model.learn(
         total_timesteps=args.timesteps,
-        callback=[
-            eval_callback,
-            checkpoint_callback,
-        ],
+        callback=callbacks,
     )
 
     # Salva il modello al termine del training.
