@@ -208,3 +208,6 @@ __marimo__/
 
 # Trained models
 models/
+
+# Intermediate training checkpoints
+checkpoints/
