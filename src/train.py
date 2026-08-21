@@ -1,8 +1,12 @@
 import argparse
+import csv
 import os
 
+import numpy as np
+
 from stable_baselines3 import PPO, DQN
-from stable_baselines3.common.callbacks import EvalCallback
+from stable_baselines3.common.callbacks import BaseCallback
+
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage
@@ -18,6 +22,149 @@ def format_timesteps(timesteps: int) -> str:
         return f"{timesteps // 1_000}k"
 
     return str(timesteps)
+
+# Callback di evaluation con seed fissi
+class FixedSeedEvalCallback(BaseCallback):
+
+    def __init__(
+        self,
+        eval_env,
+        eval_freq,
+        eval_seeds,
+        log_path,
+        deterministic=True,
+        verbose=1,
+    ):
+        super().__init__(verbose)
+
+        # Parametri necessari per l'evaluation periodica
+        self.eval_env = eval_env
+        self.eval_freq = eval_freq
+        self.eval_seeds = eval_seeds
+        self.log_path = log_path
+        self.deterministic = deterministic
+
+        # File in cui salvare i risultati delle evaluation
+        self.csv_path = os.path.join(
+            log_path,
+            "evaluations.csv",
+        )
+
+    def _init_callback(self):
+        # Crea la cartella dei log, se necessario
+        os.makedirs(
+            self.log_path,
+            exist_ok=True,
+        )
+
+        # Crea il CSV con la relativa intestazione
+        with open(
+            self.csv_path,
+            "w",
+            newline="",
+            encoding="utf-8",
+        ) as file:
+            writer = csv.writer(file)
+
+            writer.writerow([
+                "timesteps",
+                "eval_seed",
+                "episode_reward",
+                "episode_length",
+            ])
+
+    def _run_episode(self, seed):
+        # Imposta il seed della pista per questo episodio
+        self.eval_env.seed(seed)
+        obs = self.eval_env.reset()
+
+        episode_reward = 0.0
+        episode_length = 0
+        done = False
+        final_info = None
+
+        while not done:
+            # Il modello sceglie l'azione da eseguire
+            action, _ = self.model.predict(
+                obs,
+                deterministic=self.deterministic,
+            )
+
+            obs, rewards, dones, infos = self.eval_env.step(action)
+
+            episode_reward += float(rewards[0])
+            episode_length += 1
+            done = bool(dones[0])
+
+            if done:
+                final_info = infos[0]
+
+        # Usa le statistiche registrate dal Monitor, se disponibili
+        if final_info is not None and "episode" in final_info:
+            episode_reward = float(
+                final_info["episode"]["r"]
+            )
+            episode_length = int(
+                final_info["episode"]["l"]
+            )
+
+        return episode_reward, episode_length
+
+    def _on_step(self):
+        # Esegue l'evaluation solo alla frequenza stabilita
+        if self.num_timesteps % self.eval_freq != 0:
+            return True
+
+        episode_rewards = []
+        episode_lengths = []
+        rows = []
+
+        # Ripete sempre gli stessi seed ad ogni evaluation
+        for seed in self.eval_seeds:
+            reward, length = self._run_episode(seed)
+
+            episode_rewards.append(reward)
+            episode_lengths.append(length)
+
+            rows.append([
+                self.num_timesteps,
+                seed,
+                reward,
+                length,
+            ])
+
+        # Salva i risultati dei singoli episodi
+        with open(
+            self.csv_path,
+            "a",
+            newline="",
+            encoding="utf-8",
+        ) as file:
+            writer = csv.writer(file)
+            writer.writerows(rows)
+
+        # Calcola le statistiche dell'evaluation
+        mean_reward = np.mean(episode_rewards)
+        std_reward = np.std(episode_rewards)
+        mean_length = np.mean(episode_lengths)
+        std_length = np.std(episode_lengths)
+
+        if self.verbose >= 1:
+            print(
+                f"Eval num_timesteps={self.num_timesteps}, "
+                f"episode_reward={mean_reward:.2f} +/- {std_reward:.2f}"
+            )
+
+            print(
+                f"Episode length: "
+                f"{mean_length:.2f} +/- {std_length:.2f}"
+            )
+
+            print(
+                f"Evaluation seeds: {self.eval_seeds}"
+            )
+
+        return True
 
 def main():
     parser = argparse.ArgumentParser()
@@ -59,18 +206,12 @@ def main():
         default=10_000,
     )
 
-    # Numero di episodi utilizati per ogni valutazione periodica
+    # Seed delle piste utilizzate ad ogni evaluation
     parser.add_argument(
-        "--eval-episodes",
+        "--eval-seeds",
         type=int,
-        default=5,
-    )
-
-    # Seed usato per inizializzare l'ambiente di evaluation
-    parser.add_argument(
-        "--eval-seed",
-        type=int,
-        default=100
+        nargs="+",
+        default=[100, 101, 102, 103, 104],
     )
 
     args = parser.parse_args()
@@ -87,9 +228,6 @@ def main():
     ])
 
     eval_env = VecTransposeImage(eval_env)
-
-    
-    eval_env.seed(args.eval_seed)
 
     os.makedirs("models", exist_ok=True)
 
@@ -122,16 +260,15 @@ def main():
     # Uso del logger per registrare il training
     model.set_logger(logger)
 
-    # Valuta periodicamente il modello durante il training
-    eval_callback = EvalCallback(
-        eval_env,                               # Ambiente in cui viene effettuata la valutazione
-        n_eval_episodes=args.eval_episodes,     # Numero di episodi eseguiti per ogni evaluation
-        eval_freq=args.eval_freq,               # Ogni quanti step la valutazione viene effettuata
-        log_path=log_dir,                       # Cartella in cui vengono salvati i risultati delle evaluation
-        deterministic=True,                     # La valutazione dell'agente avviene senza introdurre esplorazione casuale
-        render=False,                           # Non viene aperta alcuna finestra grafica
-        verbose=1,                              
-    )       
+    # Valuta periodicamente il modello sulle stesse piste
+    eval_callback = FixedSeedEvalCallback(
+        eval_env=eval_env,               # Ambiente in cui viene effettuata la valutazione
+        eval_freq=args.eval_freq,        # Ogni quanti step la valutazione viene effettuata
+        eval_seeds=args.eval_seeds,
+        log_path=log_dir,                # Cartella in cui vengono salvati i risultati delle evaluation
+        deterministic=True,              # La valutazione dell'agente avviene senza introdurre esplorazione casuale
+        verbose=1,
+    )     
 
     # Avvia il training ed esegue periodicamente l'evaluation.
     model.learn(
