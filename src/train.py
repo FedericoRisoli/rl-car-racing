@@ -166,6 +166,62 @@ class FixedSeedEvalCallback(BaseCallback):
 
         return True
 
+# Salva lo stato necessario per recuperare un training DQN interrotto
+class RecoveryCallback(BaseCallback):
+
+    def __init__(
+        self,
+        save_freq,
+        save_path,
+        verbose=1,
+    ):
+        super().__init__(verbose)
+
+        # Frequenza con cui aggiornare il recovery
+        self.save_freq = save_freq
+
+        # Cartella in cui salvare modello e replay buffer
+        self.save_path = save_path
+
+    def _init_callback(self):
+        # Crea la cartella di recovery, se necessario
+        os.makedirs(
+            self.save_path,
+            exist_ok=True,
+        )
+
+    def _on_step(self):
+        # Salva il recovery solo alla frequenza stabilita
+        if self.num_timesteps % self.save_freq != 0:
+            return True
+
+        model_path = os.path.join(
+            self.save_path,
+            "recovery_model",
+        )
+
+        replay_buffer_path = os.path.join(
+            self.save_path,
+            "recovery_replay_buffer.pkl",
+        )
+
+        # Sovrascrive il precedente modello di recovery
+        self.model.save(model_path)
+
+        # Sovrascrive il precedente replay buffer
+        self.model.save_replay_buffer(
+            replay_buffer_path
+        )
+
+        if self.verbose >= 1:
+            print(
+                f"Recovery DQN salvato a "
+                f"{self.num_timesteps} timesteps"
+            )
+
+        return True
+
+
 def main():
     parser = argparse.ArgumentParser()
 
@@ -221,7 +277,29 @@ def main():
         default=None,
     )
 
+    # Frequenza del salvataggio di recovery per DQN
+    parser.add_argument(
+        "--recovery-freq",
+        type=int,
+        default=None,
+    )
+
+    # Cartella di recovery da cui riprendere un training DQN
+    parser.add_argument(
+        "--resume-from",
+        type=str,
+        default=None,
+    )
+
     args = parser.parse_args()
+
+    # Determina la frequenza del recovery DQN
+    if args.recovery_freq is not None:
+        recovery_freq = args.recovery_freq
+    elif args.algo == "dqn" and args.run_type != "smoke":
+        recovery_freq = max(1, args.timesteps // 4)
+    else:
+        recovery_freq = None
 
     # Determina automaticamente la frequenza dei checkpoint
     if args.checkpoint_freq is not None:
@@ -237,6 +315,9 @@ def main():
     timesteps_label = format_timesteps(args.timesteps)
     run_name = f"{args.algo}_{args.run_type}_{timesteps_label}_seed_{args.seed}"
 
+    # Indica se il training deve essere ripreso da un recovery
+    is_resume = args.resume_from is not None
+
     env = make_env()
 
     # Creo un ambiente separato solo per valutare il modello
@@ -248,30 +329,116 @@ def main():
 
     os.makedirs("models", exist_ok=True)
 
-    # Cartella in cui vengono salvati i log del training e delle evaluation.
-    log_dir = os.path.join("logs", run_name)
+    # Crea un nuovo modello oppure riprende un training DQN
+    if is_resume:
+        if args.algo != "dqn":
+            raise ValueError(
+                "Il resume da recovery è supportato solo per DQN."
+            )
 
-    # Mostra i log nel terminale e li salva anche in formato CSV
-    logger = configure(log_dir, ["stdout", "csv"])
+        recovery_model_path = os.path.join(
+            args.resume_from,
+            "recovery_model.zip",
+        )
 
-    if args.algo == "ppo":
-        model = PPO(
-            "CnnPolicy",
-            env,
-            seed=args.seed,
+        recovery_buffer_path = os.path.join(
+            args.resume_from,
+            "recovery_replay_buffer.pkl",
+        )
+
+        # Verifica che entrambi i file di recovery esistano
+        if not os.path.isfile(recovery_model_path):
+            raise FileNotFoundError(
+                f"Modello di recovery non trovato: {recovery_model_path}"
+        )
+
+        if not os.path.isfile(recovery_buffer_path):
+            raise FileNotFoundError(
+                f"Replay buffer non trovato: {recovery_buffer_path}"
+        )
+
+        # Carica il modello DQN salvato
+        model = DQN.load(
+            recovery_model_path,
+            env=env,
             device="cpu",
-            verbose=1,
+        )
+
+        # Ripristina anche il replay buffer
+        model.load_replay_buffer(
+            recovery_buffer_path
+        )
+
+        resumed_timesteps = model.num_timesteps
+
+
+        # Evita di riprendere un training che ha già raggiunto il target
+        if resumed_timesteps >= args.timesteps:
+            raise ValueError(
+                f"Il recovery contiene già {resumed_timesteps} timesteps, "
+                f"mentre il target richiesto è {args.timesteps}."
+            )
+
+        # Calcola quanti step mancano per raggiungere il target
+        training_timesteps = args.timesteps - resumed_timesteps
+        reset_num_timesteps = False
+
+        print(
+            f"Recovery DQN caricato da {args.resume_from}"
+        )
+
+        print(
+            f"Timesteps già completati: {resumed_timesteps}"
+        )
+
+        print(
+            f"Timesteps rimanenti: {training_timesteps}"
         )
 
     else:
-        model = DQN(
-    "CnnPolicy",
-    env,
-    seed=args.seed,
-    device="cpu",
-    verbose=1,
-    buffer_size=10_000,
-    learning_starts=500,
+        resumed_timesteps = 0
+        training_timesteps = args.timesteps
+        reset_num_timesteps = True
+
+        if args.algo == "ppo":
+            model = PPO(
+                "CnnPolicy",
+                env,
+                seed=args.seed,
+                device="cpu",
+                verbose=1,
+            )
+        else:
+            model = DQN(
+                "CnnPolicy",
+                env,
+                seed=args.seed,
+                device="cpu",
+                verbose=1,
+                buffer_size=10_000,
+                learning_starts=500,
+            )
+
+    # Cartella principale dei log del training
+    base_log_dir = os.path.join(
+        "logs",
+        run_name,
+    )
+
+    # Durante un resume salva i nuovi log in una sottocartella separata
+    if is_resume:
+        log_dir = os.path.join(
+            base_log_dir,
+            f"resume_{format_timesteps(resumed_timesteps)}",
+    )
+
+    else:
+        log_dir = base_log_dir
+
+    # Mostra i log nel terminale e li salva anche in formato CSV
+    logger = configure(
+        log_dir,
+        ["stdout", "csv"],
     )
 
     # Uso del logger per registrare il training
@@ -304,23 +471,40 @@ def main():
             exist_ok=True,
         )
 
+        # Salva i checkpoint intermedi utilizzati per analisi e confronto
         checkpoint_callback = CheckpointCallback(
             save_freq=checkpoint_freq,
             save_path=checkpoint_dir,
             name_prefix=run_name,
-            save_replay_buffer=(args.algo == "dqn"),
+            save_replay_buffer=False,
             save_vecnormalize=False,
             verbose=2,
         )
 
         callbacks.append(checkpoint_callback)
 
+    # Aggiunge il recovery solo per DQN quando previsto
+    if args.algo == "dqn" and recovery_freq is not None:
+        recovery_dir = os.path.join(
+            "recovery",
+            run_name,
+        )
+
+        recovery_callback = RecoveryCallback(
+            save_freq=recovery_freq,
+            save_path=recovery_dir,
+            verbose=1,
+        )
+
+        callbacks.append(recovery_callback)
+
 
 
     # Avvia il training con i callback configurati.
     model.learn(
-        total_timesteps=args.timesteps,
+        total_timesteps=training_timesteps,
         callback=callbacks,
+        reset_num_timesteps=reset_num_timesteps,
     )
 
     # Salva il modello al termine del training.

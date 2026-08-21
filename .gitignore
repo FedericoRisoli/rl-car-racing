@@ -211,3 +211,6 @@ models/
 
 # Intermediate training checkpoints
 checkpoints/
+
+# Recovery files
+recovery/
