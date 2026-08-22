@@ -1,0 +1,9 @@
+{
+    "status": "interrupted",
+    "target_timesteps": 2000,
+    "start_timesteps": 0,
+    "actual_timesteps": 1208,
+    "timesteps_this_session": 1208,
+    "elapsed_seconds": 41.350664699974004,
+    "resumed_from": null
+}

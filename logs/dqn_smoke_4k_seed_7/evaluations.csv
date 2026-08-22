@@ -1,0 +1,3 @@
+timesteps,eval_seed,episode_reward,episode_length
+2000,100,-40.740741,1000
+2000,101,-33.993399,1000

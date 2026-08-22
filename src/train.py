@@ -1,17 +1,31 @@
 import argparse
 import csv
 import os
-
+import json
+import platform
+import time
+from importlib import metadata
 import numpy as np
 
 from stable_baselines3 import PPO, DQN
-from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
-
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.vec_env import DummyVecEnv, VecTransposeImage
 
-from env import make_env
+from env import (
+    make_env,
+    ENV_ID,
+    CONTINUOUS,
+    LAP_COMPLETE_PERCENT,
+    DOMAIN_RANDOMIZE,
+    MAX_EPISODE_STEPS,
+)
+
+POLICY = "CnnPolicy"
+DEVICE = "cpu"
+DQN_BUFFER_SIZE = 10_000
+DQN_LEARNING_STARTS = 500
 
 # Funzione che converte il numero di timesteps in un'etichetta compatta
 def format_timesteps(timesteps: int) -> str:
@@ -22,6 +36,80 @@ def format_timesteps(timesteps: int) -> str:
         return f"{timesteps // 1_000}k"
 
     return str(timesteps)
+
+# Restituisce le versioni software utilizzate nell'esperimento
+def get_software_versions():
+    return {
+        "python": platform.python_version(),
+        "numpy": metadata.version("numpy"),
+        "gymnasium": metadata.version("gymnasium"),
+        "stable_baselines3": metadata.version(
+            "stable-baselines3"
+        ),
+        "torch": metadata.version("torch"),
+    }
+
+# Restituisce gli iperparametri effettivamente utilizzati dal modello
+def get_model_hyperparameters(model, algo):
+
+    if algo == "ppo":
+        return {
+            "learning_rate": float(model.learning_rate),
+            "n_steps": int(model.n_steps),
+            "batch_size": int(model.batch_size),
+            "n_epochs": int(model.n_epochs),
+            "gamma": float(model.gamma),
+            "gae_lambda": float(model.gae_lambda),
+            "clip_range": float(model.clip_range(1.0)),
+            "clip_range_vf": (
+                None
+                if model.clip_range_vf is None
+                else float(model.clip_range_vf(1.0))
+            ),
+            "normalize_advantage": bool(
+                model.normalize_advantage
+            ),
+            "ent_coef": float(model.ent_coef),
+            "vf_coef": float(model.vf_coef),
+            "max_grad_norm": float(model.max_grad_norm),
+            "use_sde": bool(model.use_sde),
+            "sde_sample_freq": int(model.sde_sample_freq),
+            "target_kl": (
+                None
+                if model.target_kl is None
+                else float(model.target_kl)
+            ),
+        }
+
+    return {
+        "learning_rate": float(model.learning_rate),
+        "buffer_size": int(model.buffer_size),
+        "learning_starts": int(model.learning_starts),
+        "batch_size": int(model.batch_size),
+        "tau": float(model.tau),
+        "gamma": float(model.gamma),
+        "train_freq": {
+            "frequency": int(model.train_freq.frequency),
+            "unit": model.train_freq.unit.value,
+        },
+        "gradient_steps": int(model.gradient_steps),
+        "optimize_memory_usage": bool(
+            model.optimize_memory_usage
+        ),
+        "target_update_interval": int(
+            model.target_update_interval
+        ),
+        "exploration_fraction": float(
+            model.exploration_fraction
+        ),
+        "exploration_initial_eps": float(
+            model.exploration_initial_eps
+        ),
+        "exploration_final_eps": float(
+            model.exploration_final_eps
+        ),
+        "max_grad_norm": float(model.max_grad_norm),
+    }
 
 # Callback di evaluation con seed fissi
 class FixedSeedEvalCallback(BaseCallback):
@@ -166,6 +254,61 @@ class FixedSeedEvalCallback(BaseCallback):
 
         return True
 
+# Salva checkpoint intermedi in base ai timesteps globali del training
+class AnalysisCheckpointCallback(BaseCallback):
+
+    def __init__(
+        self,
+        save_freq,
+        save_path,
+        name_prefix,
+        verbose=1,
+    ):
+        super().__init__(verbose)
+
+        # Frequenza con cui salvare i checkpoint
+        self.save_freq = save_freq
+
+        # Cartella in cui salvare i checkpoint
+        self.save_path = save_path
+
+        # Prefisso utilizzato per il nome dei file
+        self.name_prefix = name_prefix
+
+    def _init_callback(self):
+        # Crea la cartella dei checkpoint, se necessario
+        os.makedirs(
+            self.save_path,
+            exist_ok=True,
+        )
+
+    def _on_step(self):
+        # Salva solo ai multipli globali della frequenza stabilita
+        if self.num_timesteps % self.save_freq != 0:
+            return True
+
+        steps_label = format_timesteps(
+            self.num_timesteps
+        )
+
+        checkpoint_path = os.path.join(
+            self.save_path,
+            f"{self.name_prefix}_checkpoint_{steps_label}",
+        )
+
+        # Salva solamente il modello, senza replay buffer
+        self.model.save(
+            checkpoint_path
+        )
+
+        if self.verbose >= 1:
+            print(
+                f"Checkpoint salvato a "
+                f"{self.num_timesteps} timesteps"
+            )
+
+        return True
+
 # Salva lo stato necessario per recuperare un training DQN interrotto
 class RecoveryCallback(BaseCallback):
 
@@ -293,11 +436,34 @@ def main():
 
     args = parser.parse_args()
 
+    # Verifica che i parametri numerici siano validi
+    if args.timesteps <= 0:
+        raise ValueError(
+            "--timesteps deve essere maggiore di 0."
+    )
+
+    if args.eval_freq <= 0:
+        raise ValueError(
+            "--eval-freq deve essere maggiore di 0."
+    )
+
+    if args.checkpoint_freq is not None and args.checkpoint_freq <= 0:
+        raise ValueError(
+            "--checkpoint-freq deve essere maggiore di 0."
+    )
+
+    if args.recovery_freq is not None and args.recovery_freq <= 0:
+        raise ValueError(
+            "--recovery-freq deve essere maggiore di 0."
+        )
+
     # Determina la frequenza del recovery DQN
     if args.recovery_freq is not None:
         recovery_freq = args.recovery_freq
-    elif args.algo == "dqn" and args.run_type != "smoke":
+    elif args.algo == "dqn" and args.run_type == "pilot":
         recovery_freq = max(1, args.timesteps // 4)
+    elif args.algo == "dqn" and args.run_type == "final":
+        recovery_freq = max(1, args.timesteps // 10)
     else:
         recovery_freq = None
 
@@ -318,6 +484,45 @@ def main():
     # Indica se il training deve essere ripreso da un recovery
     is_resume = args.resume_from is not None
 
+    # Configurazione completa dell'esperimento
+    run_config = {
+        "config_version": 1,
+
+        "algo": args.algo,
+        "seed": args.seed,
+        "run_type": args.run_type,
+        "target_timesteps": args.timesteps,
+
+        "evaluation": {
+            "eval_freq": args.eval_freq,
+            "eval_seeds": args.eval_seeds,
+            "deterministic": True,
+        },
+
+        "checkpoint": {
+            "checkpoint_freq": checkpoint_freq,
+        },
+
+        "recovery": {
+            "recovery_freq": recovery_freq,
+        },
+
+        "environment": {
+            "env_id": ENV_ID,
+            "continuous": CONTINUOUS,
+            "lap_complete_percent": LAP_COMPLETE_PERCENT,
+            "domain_randomize": DOMAIN_RANDOMIZE,
+            "max_episode_steps": MAX_EPISODE_STEPS,
+        },
+
+        "model": {
+            "policy": POLICY,
+            "device": DEVICE,
+        },
+
+        "software": get_software_versions(),
+}
+
     env = make_env()
 
     # Creo un ambiente separato solo per valutare il modello
@@ -335,6 +540,47 @@ def main():
             raise ValueError(
                 "Il resume da recovery è supportato solo per DQN."
             )
+
+        # Configurazione associata al recovery
+        recovery_config_path = os.path.join(
+            args.resume_from,
+            "config.json",
+        )
+
+        if not os.path.isfile(recovery_config_path):
+            raise FileNotFoundError(
+                f"Config del recovery non trovato: {recovery_config_path}"
+            )
+
+        # Carica la configurazione originale del training
+        with open(
+            recovery_config_path,
+            "r",
+            encoding="utf-8",
+        ) as file:
+            recovery_config = json.load(file)
+
+        # Verifica che il comando di resume sia coerente con il training originale
+        config_keys = [
+            "config_version",
+            "algo",
+            "seed",
+            "run_type",
+            "target_timesteps",
+            "evaluation",
+            "checkpoint",
+            "recovery",
+            "environment",
+            "software",
+        ]
+
+        for key in config_keys:
+            if recovery_config.get(key) != run_config.get(key):
+                raise ValueError(
+                    f"Configurazione non coerente per '{key}': "
+                    f"recovery={recovery_config.get(key)}, "
+                    f"comando attuale={run_config.get(key)}"
+                )
 
         recovery_model_path = os.path.join(
             args.resume_from,
@@ -361,7 +607,7 @@ def main():
         model = DQN.load(
             recovery_model_path,
             env=env,
-            device="cpu",
+            device=DEVICE,
         )
 
         # Ripristina anche il replay buffer
@@ -402,27 +648,67 @@ def main():
 
         if args.algo == "ppo":
             model = PPO(
-                "CnnPolicy",
+                POLICY,
                 env,
                 seed=args.seed,
-                device="cpu",
+                device=DEVICE,
                 verbose=1,
             )
         else:
             model = DQN(
-                "CnnPolicy",
+                POLICY,
                 env,
                 seed=args.seed,
-                device="cpu",
+                device=DEVICE,
                 verbose=1,
-                buffer_size=10_000,
-                learning_starts=500,
+                buffer_size=DQN_BUFFER_SIZE,
+                learning_starts=DQN_LEARNING_STARTS,
+            )
+
+    # Registra gli iperparametri effettivamente utilizzati dal modello
+    run_config["model"]["hyperparameters"] = (
+        get_model_hyperparameters(
+        model,
+        args.algo,
+        )
+    )
+
+    # Durante un resume verifica anche la configurazione effettiva del modello
+    if is_resume:
+        if recovery_config.get("model") != run_config.get("model"):
+            raise ValueError(
+                "Configurazione del modello non coerente: "
+                f"recovery={recovery_config.get('model')}, "
+                f"modello caricato={run_config.get('model')}"
             )
 
     # Cartella principale dei log del training
     base_log_dir = os.path.join(
         "logs",
         run_name,
+    )
+
+    # Crea la cartella principale dei log
+    os.makedirs(
+        base_log_dir,
+        exist_ok=True,
+    )
+
+    # Salva la configurazione completa del run
+    config_path = os.path.join(
+        base_log_dir,
+        "config.json",
+    )
+
+    with open(
+        config_path,
+        "w",
+        encoding="utf-8",
+    ) as file:
+        json.dump(
+        run_config,
+        file,
+        indent=4,
     )
 
     # Durante un resume salva i nuovi log in una sottocartella separata
@@ -472,23 +758,46 @@ def main():
         )
 
         # Salva i checkpoint intermedi utilizzati per analisi e confronto
-        checkpoint_callback = CheckpointCallback(
+        checkpoint_callback = AnalysisCheckpointCallback(
             save_freq=checkpoint_freq,
             save_path=checkpoint_dir,
             name_prefix=run_name,
-            save_replay_buffer=False,
-            save_vecnormalize=False,
-            verbose=2,
+            verbose=1,
         )
 
         callbacks.append(checkpoint_callback)
 
     # Aggiunge il recovery solo per DQN quando previsto
     if args.algo == "dqn" and recovery_freq is not None:
-        recovery_dir = os.path.join(
-            "recovery",
-            run_name,
-        )
+        # Durante un resume continua ad utilizzare la stessa cartella di recovery
+        if is_resume:
+            recovery_dir = args.resume_from
+        else:
+            recovery_dir = os.path.join(
+                "recovery",
+                run_name,
+            )
+
+            os.makedirs(
+                recovery_dir,
+                exist_ok=True,
+            )
+
+            recovery_config_path = os.path.join(
+                recovery_dir,
+                "config.json",
+            )
+
+            with open(
+                recovery_config_path,
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(
+                    run_config,
+                    file,
+                    indent=4,
+                )
 
         recovery_callback = RecoveryCallback(
             save_freq=recovery_freq,
@@ -500,20 +809,95 @@ def main():
 
 
 
-    # Avvia il training con i callback configurati.
-    model.learn(
-        total_timesteps=training_timesteps,
-        callback=callbacks,
-        reset_num_timesteps=reset_num_timesteps,
-    )
+    # Stato iniziale della sessione di training
+    training_status = "completed"
+    error_message = None
 
-    # Salva il modello al termine del training.
-    model.save(
-        f"models/{run_name}"
-    )
+    # Avvia la misurazione del tempo
+    training_start_time = time.perf_counter()
 
-    env.close()
-    eval_env.close()
+    try:
+        # Avvia o riprende il training con i callback configurati
+        model.learn(
+            total_timesteps=training_timesteps,
+            callback=callbacks,
+            reset_num_timesteps=reset_num_timesteps,
+        )
+
+    except KeyboardInterrupt:
+        # Interruzione volontaria, ad esempio tramite Ctrl+C
+        training_status = "interrupted"
+
+        print(
+            "\nTraining interrotto dall'utente."
+        )
+
+    except Exception as error:
+        # Registra eventuali errori inattesi
+        training_status = "failed"
+        error_message = (
+            f"{type(error).__name__}: {error}"
+        )
+
+        raise
+
+    finally:
+        # Calcola il tempo trascorso durante questa sessione
+        elapsed_seconds = (
+            time.perf_counter()
+            - training_start_time
+        )
+
+        # Numero effettivo di timestep raggiunti
+        actual_timesteps = int(
+            model.num_timesteps
+        )
+
+        # Salva il modello finale solo se il training è terminato normalmente
+        if training_status == "completed":
+            model.save(
+                f"models/{run_name}"
+            )
+
+        # Riassunto di ciò che è realmente successo
+        run_summary = {
+            "status": training_status,
+            "target_timesteps": args.timesteps,
+            "start_timesteps": resumed_timesteps,
+            "actual_timesteps": actual_timesteps,
+            "timesteps_this_session": (
+                actual_timesteps - resumed_timesteps
+            ),
+            "elapsed_seconds_this_session": elapsed_seconds,
+            "resumed_from": args.resume_from,
+            "hardware": {
+                "processor": platform.processor(),
+                "machine": platform.machine(),
+                "cpu_count": os.cpu_count(),
+            },
+        }
+
+        if error_message is not None:
+            run_summary["error"] = error_message
+
+        summary_path = os.path.join(
+            log_dir,
+            "run_summary.json",
+        )
+
+        with open(
+            summary_path,
+            "w",
+            encoding="utf-8",
+        ) as file:
+            json.dump(
+                run_summary,
+                file,
+                indent=4,
+            )
+
+        env.close()
+        eval_env.close()
 
 if __name__ == "__main__":
     main()

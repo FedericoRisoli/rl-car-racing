@@ -1,0 +1,9 @@
+{
+    "status": "completed",
+    "target_timesteps": 1000,
+    "start_timesteps": 0,
+    "actual_timesteps": 1000,
+    "timesteps_this_session": 1000,
+    "elapsed_seconds": 86.78325489998679,
+    "resumed_from": null
+}

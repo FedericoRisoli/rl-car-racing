@@ -1,0 +1,9 @@
+{
+    "status": "completed",
+    "target_timesteps": 2000,
+    "start_timesteps": 1000,
+    "actual_timesteps": 2000,
+    "timesteps_this_session": 1000,
+    "elapsed_seconds": 110.13341449998552,
+    "resumed_from": "recovery\\dqn_smoke_2k_seed_12"
+}

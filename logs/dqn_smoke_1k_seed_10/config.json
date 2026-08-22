@@ -1,0 +1,58 @@
+{
+    "config_version": 1,
+    "algo": "dqn",
+    "seed": 10,
+    "run_type": "smoke",
+    "target_timesteps": 1000,
+    "evaluation": {
+        "eval_freq": 1000,
+        "eval_seeds": [
+            100,
+            101
+        ],
+        "deterministic": true
+    },
+    "checkpoint": {
+        "checkpoint_freq": 1000
+    },
+    "recovery": {
+        "recovery_freq": 1000
+    },
+    "environment": {
+        "env_id": "CarRacing-v2",
+        "continuous": false,
+        "lap_complete_percent": 0.95,
+        "domain_randomize": false,
+        "max_episode_steps": 1000
+    },
+    "model": {
+        "policy": "CnnPolicy",
+        "device": "cpu",
+        "hyperparameters": {
+            "learning_rate": 0.0001,
+            "buffer_size": 10000,
+            "learning_starts": 500,
+            "batch_size": 32,
+            "tau": 1.0,
+            "gamma": 0.99,
+            "train_freq": {
+                "frequency": 4,
+                "unit": "step"
+            },
+            "gradient_steps": 1,
+            "optimize_memory_usage": false,
+            "target_update_interval": 10000,
+            "exploration_fraction": 0.1,
+            "exploration_initial_eps": 1.0,
+            "exploration_final_eps": 0.05,
+            "max_grad_norm": 10.0
+        }
+    },
+    "software": {
+        "python": "3.11.9",
+        "numpy": "1.26.4",
+        "gymnasium": "0.29.0",
+        "stable_baselines3": "2.3.2",
+        "torch": "2.3.1+cpu"
+    }
+}
