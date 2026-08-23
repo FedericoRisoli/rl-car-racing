@@ -121,6 +121,8 @@ class FixedSeedEvalCallback(BaseCallback):
         eval_freq,
         eval_seeds,
         log_path,
+        best_model_save_path,
+        best_model_name,
         deterministic=True,
         verbose=1,
     ):
@@ -132,6 +134,19 @@ class FixedSeedEvalCallback(BaseCallback):
         self.eval_seeds = eval_seeds
         self.log_path = log_path
         self.deterministic = deterministic
+
+        # Cartella e nome utilizzati per salvare il miglior modello
+        self.best_model_save_path = best_model_save_path
+        self.best_model_name = best_model_name
+
+        # Miglior reward medio osservato durante le evaluation
+        self.best_mean_reward = -np.inf
+
+        # File contenente le informazioni sul miglior modello
+        self.best_info_path = os.path.join(
+            best_model_save_path,
+            "best_model_info.json",
+        )
 
         # File in cui salvare i risultati delle evaluation
         self.csv_path = os.path.join(
@@ -145,6 +160,25 @@ class FixedSeedEvalCallback(BaseCallback):
             self.log_path,
             exist_ok=True,
         )
+
+        # Crea la cartella del best model, se necessario
+        os.makedirs(
+            self.best_model_save_path,
+            exist_ok=True,
+        )
+
+        # Se il training viene ripreso, recupera il miglior reward precedente
+        if os.path.isfile(self.best_info_path):
+            with open(
+                self.best_info_path,
+                "r",
+                encoding="utf-8",
+            ) as file:
+                best_info = json.load(file)
+
+            self.best_mean_reward = float(
+                best_info["mean_reward"]
+            )
 
         # Crea il CSV con la relativa intestazione
         with open(
@@ -237,6 +271,43 @@ class FixedSeedEvalCallback(BaseCallback):
         std_reward = np.std(episode_rewards)
         mean_length = np.mean(episode_lengths)
         std_length = np.std(episode_lengths)
+
+        # Salva il modello se ottiene la migliore evaluation vista finora
+        if mean_reward > self.best_mean_reward:
+            self.best_mean_reward = float(mean_reward)
+
+            best_model_path = os.path.join(
+                self.best_model_save_path,
+                f"{self.best_model_name}_best",
+            )
+
+            self.model.save(
+                best_model_path
+            )
+
+            best_info = {
+                "timesteps": int(self.num_timesteps),
+                "mean_reward": float(mean_reward),
+                "std_reward": float(std_reward),
+                "eval_seeds": self.eval_seeds,
+            }
+
+            with open(
+                self.best_info_path,
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(
+                best_info,
+                file,
+                indent=4,
+            )
+
+            if self.verbose >= 1:
+                print(
+                    f"Nuovo best model a {self.num_timesteps} timesteps: "
+                    f"mean_reward={mean_reward:.2f}"
+                )
 
         if self.verbose >= 1:
             print(
@@ -511,6 +582,11 @@ def main():
             "deterministic": True,
         },
 
+        "best_model": {
+            "metric": "mean_eval_reward",
+            "enabled": True,
+        },
+
         "checkpoint": {
             "checkpoint_freq": checkpoint_freq,
         },
@@ -578,6 +654,7 @@ def main():
             "algo",
             "seed",
             "tag",
+            "best_model",
             "run_type",
             "target_timesteps",
             "evaluation",
@@ -744,12 +821,20 @@ def main():
     # Uso del logger per registrare il training
     model.set_logger(logger)
 
+    # Cartella in cui salvare il miglior modello trovato durante la validation
+    best_model_dir = os.path.join(
+        "best_models",
+        run_name,
+    )
+
     # Valuta periodicamente il modello sulle stesse piste
     eval_callback = FixedSeedEvalCallback(
         eval_env=eval_env,               # Ambiente in cui viene effettuata la valutazione
         eval_freq=args.eval_freq,        # Ogni quanti step la valutazione viene effettuata
         eval_seeds=args.eval_seeds,
         log_path=log_dir,                # Cartella in cui vengono salvati i risultati delle evaluation
+        best_model_save_path=best_model_dir,
+        best_model_name=run_name,
         deterministic=True,              # La valutazione dell'agente avviene senza introdurre esplorazione casuale
         verbose=1,
     )     
