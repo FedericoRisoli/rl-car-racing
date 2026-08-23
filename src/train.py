@@ -24,7 +24,7 @@ from env import (
 
 POLICY = "CnnPolicy"
 DEVICE = "cpu"
-DQN_BUFFER_SIZE = 10_000
+DQN_BUFFER_SIZE = 20_000
 DQN_LEARNING_STARTS = 500
 
 # Funzione che converte il numero di timesteps in un'etichetta compatta
@@ -398,6 +398,13 @@ def main():
         required=True,
     )
 
+    parser.add_argument(
+        "--tag",
+        type=str,
+        default=None,
+        help="Etichetta opzionale per distinguere varianti dello stesso esperimento.",
+    )
+
     # Ogni quanti timesteps effettuare la valutazione del modello
     parser.add_argument(
         "--eval-freq",
@@ -481,6 +488,9 @@ def main():
     timesteps_label = format_timesteps(args.timesteps)
     run_name = f"{args.algo}_{args.run_type}_{timesteps_label}_seed_{args.seed}"
 
+    if args.tag is not None:
+        run_name = f"{run_name}_{args.tag}"
+
     # Indica se il training deve essere ripreso da un recovery
     is_resume = args.resume_from is not None
 
@@ -491,6 +501,7 @@ def main():
         "algo": args.algo,
         "seed": args.seed,
         "run_type": args.run_type,
+        "tag": args.tag,
         "target_timesteps": args.timesteps,
 
         "evaluation": {
@@ -565,6 +576,7 @@ def main():
             "config_version",
             "algo",
             "seed",
+            "tag",
             "run_type",
             "target_timesteps",
             "evaluation",

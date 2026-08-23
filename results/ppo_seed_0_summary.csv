@@ -1,2 +1,2 @@
 algorithm,training_seed,episodes,mean_reward,std_reward,median_reward,min_reward,max_reward,completion_rate,mean_episode_length,std_episode_length,mean_track_completion,deterministic
-ppo,0,1,8.633333333334079,0.0,8.633333333334079,8.633333333334079,8.633333333334079,0.0,248.0,0.0,0.13333333333333333,1
+ppo,0,1,871.2230215827154,0.0,871.2230215827154,871.2230215827154,871.2230215827154,0.0,1000.0,0.0,0.9712230215827338,1

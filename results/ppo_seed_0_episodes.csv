@@ -1,2 +1,2 @@
 algorithm,model_path,training_seed,evaluation_seed,episode,episode_reward,episode_length,completed,termination_reason,visited_tiles,total_tiles,track_completion,lap_complete_percent,terminated,truncated,deterministic
-ppo,models\ppo_smoke_seed_0.zip,0,100,1,8.633333333334079,248,0,out_of_bounds,36,270,0.13333333333333333,0.95,1,0,1
+ppo,models\ppo_pilot_100k_seed_0.zip,0,103,1,871.2230215827154,1000,0,time_limit,270,278,0.9712230215827338,0.95,0,1,1

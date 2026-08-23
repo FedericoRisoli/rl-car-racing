@@ -1,3 +1,4 @@
+# Il file ENV.PY rappresenta il file di configurazione e creazione dell'ambiente di Reinforcement Learning.
 import gymnasium as gym
 
 # ID dell'ambiente utilizzato nel progetto.
