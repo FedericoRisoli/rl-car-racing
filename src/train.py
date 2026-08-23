@@ -24,8 +24,9 @@ from env import (
 
 POLICY = "CnnPolicy"
 DEVICE = "cpu"
-DQN_BUFFER_SIZE = 20_000
+DQN_BUFFER_SIZE = 10_000
 DQN_LEARNING_STARTS = 500
+DQN_EXPLORATION_FRACTION = 0.3
 
 # Funzione che converte il numero di timesteps in un'etichetta compatta
 def format_timesteps(timesteps: int) -> str:
@@ -675,6 +676,7 @@ def main():
                 verbose=1,
                 buffer_size=DQN_BUFFER_SIZE,
                 learning_starts=DQN_LEARNING_STARTS,
+                exploration_fraction=DQN_EXPLORATION_FRACTION,
             )
 
     # Registra gli iperparametri effettivamente utilizzati dal modello
