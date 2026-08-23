@@ -1,7 +1,8 @@
 # Il file ENV.PY rappresenta il file di configurazione e creazione dell'ambiente di Reinforcement Learning.
 import gymnasium as gym
 
-# ID dell'ambiente utilizzato nel progetto.
+# ID dell'ambiente utilizzato nel progetto. Grazie a questo identificatore, Gymnasium cerca nel proprio registro
+# l'ambiente avente quell'id e costruisce l'oggetto corrispondente.
 ENV_ID = "CarRacing-v2"
 
 # Imposta lo spazio delle azioni come discreto. In questo modo, l'agente può scegliere fra 5 azioni:
@@ -15,7 +16,8 @@ LAP_COMPLETE_PERCENT = 0.95
 # Disbilita la randomizzazione dei colori dell'ambiente.
 DOMAIN_RANDOMIZE = False
 
-# Numero massimo di step consentiti in un singolo episodio.
+# Numero massimo di step consentiti in un singolo episodio; si ricorda che uno step corrisponde ad una singola interazione
+# dell'agente con l'ambiente. 
 MAX_EPISODE_STEPS = 1000
 
 # Metodo che crea e restituisce l'ambiente CarRacing utilizzato nel progetto.
