@@ -148,6 +148,11 @@ class FixedSeedEvalCallback(BaseCallback):
             "best_model_info.json",
         )
 
+        self.best_log_info_path = os.path.join(
+            log_path,
+            "best_model_info.json",
+        )
+
         # File in cui salvare i risultati delle evaluation
         self.csv_path = os.path.join(
             log_path,
@@ -302,6 +307,17 @@ class FixedSeedEvalCallback(BaseCallback):
                 file,
                 indent=4,
             )
+
+            with open(
+                self.best_log_info_path,
+                "w",
+                encoding="utf-8",
+            ) as file:
+                json.dump(
+                    best_info,
+                    file,
+                    indent=4,
+                )
 
             if self.verbose >= 1:
                 print(

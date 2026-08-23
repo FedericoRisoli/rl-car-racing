@@ -1,0 +1,9 @@
+{
+    "timesteps": 1000,
+    "mean_reward": -92.9959665,
+    "std_reward": 0.4033735000000007,
+    "eval_seeds": [
+        100,
+        101
+    ]
+}
