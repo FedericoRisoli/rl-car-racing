@@ -26,7 +26,7 @@ POLICY = "CnnPolicy"
 DEVICE = "cpu"
 DQN_BUFFER_SIZE = 10_000
 DQN_LEARNING_STARTS = 500
-DQN_EXPLORATION_FRACTION = 0.1
+DQN_EXPLORATION_FRACTION = 0.5
 
 # Funzione che converte il numero di timesteps in un'etichetta compatta
 def format_timesteps(timesteps: int) -> str:
