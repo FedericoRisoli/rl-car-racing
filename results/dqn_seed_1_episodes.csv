@@ -1,0 +1,3 @@
+algorithm,model_path,training_seed,evaluation_seed,episode,episode_reward,episode_length,completed,termination_reason,visited_tiles,total_tiles,track_completion,lap_complete_percent,terminated,truncated,deterministic
+dqn,best_models\dqn_pilot_100k_seed_1_exploration10\dqn_pilot_100k_seed_1_exploration10_best.zip,1,103,1,425.1798561150926,1000,0,time_limit,146,278,0.5251798561151079,0.95,0,1,1
+dqn,best_models\dqn_pilot_100k_seed_1_exploration10\dqn_pilot_100k_seed_1_exploration10_best.zip,1,104,2,-19.463087248322967,1000,0,time_limit,24,298,0.08053691275167785,0.95,0,1,1
