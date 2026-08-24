@@ -1,0 +1,2 @@
+algorithm,model_path,training_seed,evaluation_seed,episode,episode_reward,episode_length,completed,termination_reason,visited_tiles,total_tiles,track_completion,lap_complete_percent,terminated,truncated,deterministic
+ppo,best_models\ppo_pilot_100k_seed_1_baseline\ppo_pilot_100k_seed_1_baseline_best.zip,1,104,1,10.738255033557964,1000,0,time_limit,33,298,0.11073825503355705,0.95,0,1,1
