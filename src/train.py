@@ -452,6 +452,79 @@ class RecoveryCallback(BaseCallback):
 
         return True
 
+class PPORecoveryCallback(BaseCallback):
+
+    def __init__(
+        self,
+        save_freq,
+        save_path,
+        verbose=1,
+    ):
+        super().__init__(verbose)
+
+        # Frequenza desiderata del recovery
+        self.save_freq = save_freq
+
+        # Cartella in cui salvare il modello
+        self.save_path = save_path
+
+        # Prossima soglia di timestep dopo la quale salvare
+        self.next_save_timestep = None
+
+    def _init_callback(self):
+        # Crea la cartella di recovery, se necessario
+        os.makedirs(
+            self.save_path,
+            exist_ok=True,
+        )
+
+        # Calcola la prossima soglia di recovery
+        current_timesteps = int(
+            self.model.num_timesteps
+        )
+
+        self.next_save_timestep = (
+            (
+                current_timesteps
+                // self.save_freq
+            )
+            + 1
+        ) * self.save_freq
+
+    def _on_rollout_start(self):
+        # PPO viene salvato all'inizio di un nuovo rollout,
+        # quindi dopo che il rollout precedente è stato
+        # utilizzato per aggiornare il modello.
+        if self.num_timesteps < self.next_save_timestep:
+            return
+
+        model_path = os.path.join(
+            self.save_path,
+            "recovery_model",
+        )
+
+        # Sovrascrive il precedente modello di recovery
+        self.model.save(
+            model_path
+        )
+
+        if self.verbose >= 1:
+            print(
+                f"Recovery PPO salvato a "
+                f"{self.num_timesteps} timesteps"
+            )
+
+        # Calcola la soglia successiva
+        while (
+            self.next_save_timestep
+            <= self.num_timesteps
+        ):
+            self.next_save_timestep += (
+                self.save_freq
+            )
+
+    def _on_step(self):
+        return True
 
 def main():
     parser = argparse.ArgumentParser()
@@ -515,14 +588,14 @@ def main():
         default=None,
     )
 
-    # Frequenza del salvataggio di recovery per DQN
+    # Frequenza del salvataggio di recovery
     parser.add_argument(
         "--recovery-freq",
         type=int,
         default=None,
     )
 
-    # Cartella di recovery da cui riprendere un training DQN
+    # Cartella di recovery da cui riprendere un training
     parser.add_argument(
         "--resume-from",
         type=str,
@@ -552,13 +625,19 @@ def main():
             "--recovery-freq deve essere maggiore di 0."
         )
 
-    # Determina la frequenza del recovery DQN
+    # Determina la frequenza del recovery
     if args.recovery_freq is not None:
         recovery_freq = args.recovery_freq
-    elif args.algo == "dqn" and args.run_type == "pilot":
-        recovery_freq = max(1, args.timesteps // 4)
-    elif args.algo == "dqn" and args.run_type == "final":
-        recovery_freq = max(1, args.timesteps // 10)
+    elif args.run_type == "pilot":
+        recovery_freq = max(
+            1,
+            args.timesteps // 4,
+        )
+    elif args.run_type == "final":
+        recovery_freq = max(
+            1,
+            args.timesteps // 10,
+        )
     else:
         recovery_freq = None
 
@@ -638,12 +717,8 @@ def main():
 
     os.makedirs("models", exist_ok=True)
 
-    # Crea un nuovo modello oppure riprende un training DQN
+    # Crea un nuovo modello oppure riprende un training
     if is_resume:
-        if args.algo != "dqn":
-            raise ValueError(
-                "Il resume da recovery è supportato solo per DQN."
-            )
 
         # Configurazione associata al recovery
         recovery_config_path = os.path.join(
@@ -693,58 +768,78 @@ def main():
             "recovery_model.zip",
         )
 
-        recovery_buffer_path = os.path.join(
-            args.resume_from,
-            "recovery_replay_buffer.pkl",
-        )
-
-        # Verifica che entrambi i file di recovery esistano
+        # Il modello deve esistere per entrambi gli algoritmi
         if not os.path.isfile(recovery_model_path):
             raise FileNotFoundError(
-                f"Modello di recovery non trovato: {recovery_model_path}"
-        )
-
-        if not os.path.isfile(recovery_buffer_path):
-            raise FileNotFoundError(
-                f"Replay buffer non trovato: {recovery_buffer_path}"
-        )
-
-        # Carica il modello DQN salvato
-        model = DQN.load(
-            recovery_model_path,
-            env=env,
-            device=DEVICE,
-        )
-
-        # Ripristina anche il replay buffer
-        model.load_replay_buffer(
-            recovery_buffer_path
-        )
-
-        resumed_timesteps = model.num_timesteps
-
-
-        # Evita di riprendere un training che ha già raggiunto il target
-        if resumed_timesteps >= args.timesteps:
-            raise ValueError(
-                f"Il recovery contiene già {resumed_timesteps} timesteps, "
-                f"mentre il target richiesto è {args.timesteps}."
+                f"Modello di recovery non trovato: "
+                f"{recovery_model_path}"
             )
 
-        # Calcola quanti step mancano per raggiungere il target
-        training_timesteps = args.timesteps - resumed_timesteps
+        if args.algo == "ppo":
+            # PPO deve ripristinare solamente il modello
+            model = PPO.load(
+                recovery_model_path,
+                env=env,
+                device=DEVICE,
+            )
+        else:
+            # DQN deve ripristinare anche il replay buffer
+            recovery_buffer_path = os.path.join(
+                args.resume_from,
+                "recovery_replay_buffer.pkl",
+            )
+
+            if not os.path.isfile(recovery_buffer_path):
+                raise FileNotFoundError(
+                    f"Replay buffer non trovato: "
+                    f"{recovery_buffer_path}"
+                )
+
+            model = DQN.load(
+                recovery_model_path,
+                env=env,
+                device=DEVICE,
+            )
+
+            model.load_replay_buffer(
+                recovery_buffer_path
+            )
+
+        # Recupera il numero di timestep già effettuati
+        resumed_timesteps = int(
+            model.num_timesteps
+        )
+
+        # Evita di riprendere un training già terminato
+        if resumed_timesteps >= args.timesteps:
+            raise ValueError(
+                f"Il recovery contiene già "
+                f"{resumed_timesteps} timesteps, "
+                f"mentre il target richiesto è "
+                f"{args.timesteps}."
+            )
+
+        # Calcola quanti timestep mancano
+        training_timesteps = (
+            args.timesteps - resumed_timesteps
+        )
+
+        # Non azzera il contatore globale
         reset_num_timesteps = False
 
         print(
-            f"Recovery DQN caricato da {args.resume_from}"
+            f"Recovery {args.algo.upper()} "
+            f"caricato da {args.resume_from}"
         )
 
         print(
-            f"Timesteps già completati: {resumed_timesteps}"
+            f"Timesteps già completati: "
+            f"{resumed_timesteps}"
         )
 
         print(
-            f"Timesteps rimanenti: {training_timesteps}"
+            f"Timesteps rimanenti: "
+            f"{training_timesteps}"
         )
 
     else:
@@ -882,9 +977,11 @@ def main():
 
         callbacks.append(checkpoint_callback)
 
-    # Aggiunge il recovery solo per DQN quando previsto
-    if args.algo == "dqn" and recovery_freq is not None:
-        # Durante un resume continua ad utilizzare la stessa cartella di recovery
+    # Aggiunge il recovery quando previsto
+    if recovery_freq is not None:
+
+        # Durante un resume continua ad utilizzare
+        # la stessa cartella di recovery
         if is_resume:
             recovery_dir = args.resume_from
         else:
@@ -914,15 +1011,24 @@ def main():
                     indent=4,
                 )
 
-        recovery_callback = RecoveryCallback(
+        # DQN e PPO richiedono callback di recovery differenti
+        if args.algo == "dqn":
+            recovery_callback = RecoveryCallback(
             save_freq=recovery_freq,
             save_path=recovery_dir,
             verbose=1,
         )
 
-        callbacks.append(recovery_callback)
+        else:
+            recovery_callback = PPORecoveryCallback(
+            save_freq=recovery_freq,
+            save_path=recovery_dir,
+            verbose=1,
+        )
 
-
+        callbacks.append(
+            recovery_callback
+        )
 
     # Stato iniziale della sessione di training
     training_status = "completed"
