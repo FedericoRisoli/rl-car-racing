@@ -1,0 +1,14 @@
+{
+    "status": "completed",
+    "target_timesteps": 1000000,
+    "start_timesteps": 0,
+    "actual_timesteps": 1000000,
+    "timesteps_this_session": 1000000,
+    "elapsed_seconds_this_session": 31662.1060046,
+    "resumed_from": null,
+    "hardware": {
+        "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+        "machine": "AMD64",
+        "cpu_count": 12
+    }
+}
