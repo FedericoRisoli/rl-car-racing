@@ -1,0 +1,14 @@
+{
+    "status": "completed",
+    "target_timesteps": 1000000,
+    "start_timesteps": 0,
+    "actual_timesteps": 1001472,
+    "timesteps_this_session": 1001472,
+    "elapsed_seconds_this_session": 60798.07961339998,
+    "resumed_from": null,
+    "hardware": {
+        "processor": "Intel64 Family 6 Model 140 Stepping 1, GenuineIntel",
+        "machine": "AMD64",
+        "cpu_count": 8
+    }
+}
