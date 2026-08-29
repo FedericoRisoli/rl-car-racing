@@ -107,11 +107,19 @@ def save_figure(fig: plt.Figure, path: Path, dpi: int) -> None:
 
 
 def plot_learning_curve(input_dir: Path, output_dir: Path, dpi: int) -> None:
-    """Learning curve media sui 4 training seed con fascia +/- 1 std."""
+    """
+    Learning curve PPO vs DQN.
 
-    path = input_dir / "learning_curve_algorithm.csv"
-    rows = read_csv(
-        path,
+    Mostra:
+    - le curve dei singoli training seed con linee sottili;
+    - la media sui training seed con linea più marcata;
+    - una fascia leggera +/- 1 deviazione standard.
+    """
+
+    # Curva aggregata tra training seed
+    algorithm_path = input_dir / "learning_curve_algorithm.csv"
+    algorithm_rows = read_csv(
+        algorithm_path,
         {
             "algorithm",
             "timesteps",
@@ -120,63 +128,228 @@ def plot_learning_curve(input_dir: Path, output_dir: Path, dpi: int) -> None:
         },
     )
 
-    grouped: dict[str, list[dict[str, str]]] = defaultdict(list)
-    for row in rows:
-        algorithm = row["algorithm"].strip().lower()
-        if algorithm in ALGORITHMS:
-            grouped[algorithm].append(row)
+    # Curve dei singoli training
+    per_run_path = input_dir / "learning_curve_per_run.csv"
+    per_run_rows = read_csv(
+        per_run_path,
+        {
+            "algorithm",
+            "training_seed",
+            "timesteps",
+            "mean_validation_reward",
+        },
+    )
 
-    fig, ax = plt.subplots(figsize=(9, 5.5))
+    aggregated: dict[str, list[dict[str, str]]] = defaultdict(list)
+
+    for row in algorithm_rows:
+        algorithm = row["algorithm"].strip().lower()
+
+        if algorithm in ALGORITHMS:
+            aggregated[algorithm].append(row)
+
+    individual: dict[
+        tuple[str, int],
+        list[dict[str, str]]
+    ] = defaultdict(list)
+
+    for row in per_run_rows:
+        algorithm = row["algorithm"].strip().lower()
+
+        if algorithm in ALGORITHMS:
+            training_seed = as_int(
+                row["training_seed"]
+            )
+
+            individual[
+                (algorithm, training_seed)
+            ].append(row)
+
+    fig, ax = plt.subplots(
+        figsize=(9, 5.5)
+    )
 
     for algorithm in ALGORITHMS:
+
         algorithm_rows = sorted(
-            grouped.get(algorithm, []),
-            key=lambda row: as_int(row["timesteps"]),
+            aggregated.get(
+                algorithm,
+                [],
+            ),
+            key=lambda row:
+                as_int(
+                    row["timesteps"]
+                ),
         )
 
         if not algorithm_rows:
-            raise ValueError(f"Nessun dato learning curve per {algorithm.upper()}.")
+            raise ValueError(
+                f"Nessun dato learning curve "
+                f"per {algorithm.upper()}."
+            )
 
         timesteps = np.asarray(
-            [as_int(row["timesteps"]) for row in algorithm_rows],
-            dtype=np.int64,
-        )
-        means = np.asarray(
             [
-                as_float(row["mean_validation_reward_across_training_seeds"])
+                as_int(row["timesteps"])
                 for row in algorithm_rows
             ],
-            dtype=np.float64,
+            dtype=np.int64,
         )
-        stds = np.asarray(
+
+        means = np.asarray(
             [
-                as_float(row["std_validation_reward_between_training_seeds"])
+                as_float(
+                    row[
+                        "mean_validation_reward_across_training_seeds"
+                    ]
+                )
                 for row in algorithm_rows
             ],
             dtype=np.float64,
         )
 
-        line = ax.plot(
+        stds = np.asarray(
+            [
+                as_float(
+                    row[
+                        "std_validation_reward_between_training_seeds"
+                    ]
+                )
+                for row in algorithm_rows
+            ],
+            dtype=np.float64,
+        )
+
+        # Curva media.
+        mean_line = ax.plot(
             timesteps,
             means,
-            linewidth=2,
-            label=DISPLAY_NAME[algorithm],
+            linewidth=2.4,
+            label=DISPLAY_NAME[
+                algorithm
+            ],
+            zorder=3,
         )[0]
+
+        line_color = (
+            mean_line.get_color()
+        )
+
+        # Singoli training seed.
+        training_seeds = sorted(
+            seed
+            for (
+                algo,
+                seed,
+            ) in individual
+            if algo == algorithm
+        )
+
+        for training_seed in training_seeds:
+
+            seed_rows = sorted(
+                individual[
+                    (
+                        algorithm,
+                        training_seed,
+                    )
+                ],
+                key=lambda row:
+                    as_int(
+                        row["timesteps"]
+                    ),
+            )
+
+            seed_timesteps = [
+                as_int(
+                    row["timesteps"]
+                )
+                for row in seed_rows
+            ]
+
+            seed_rewards = [
+                as_float(
+                    row[
+                        "mean_validation_reward"
+                    ]
+                )
+                for row in seed_rows
+            ]
+
+            ax.plot(
+                seed_timesteps,
+                seed_rewards,
+                linewidth=0.8,
+                alpha=0.18,
+                color=line_color,
+                zorder=1,
+            )
+
+        # Fascia +/- 1 deviazione standard.
         ax.fill_between(
             timesteps,
             means - stds,
             means + stds,
-            alpha=0.18,
-            color=line.get_color(),
+            alpha=0.08,
+            color=line_color,
+            zorder=0,
         )
 
-    ax.set_title("Learning curve: PPO vs DQN")
-    ax.set_xlabel("Environment timesteps")
-    ax.set_ylabel("Mean validation reward")
-    ax.grid(True, alpha=0.25)
-    ax.legend(title="Algoritmo")
+    ax.set_title(
+        "Curva di apprendimento: PPO vs DQN"
+    )
 
-    save_figure(fig, output_dir / "learning_curve.png", dpi)
+    ax.set_xlabel(
+        "Timestep di training"
+    )
+
+    ax.set_ylabel(
+        "Reward medio di validazione"
+    )
+
+    # Asse più leggibile rispetto alla notazione 1e6.
+    tick_values = [
+        0,
+        200_000,
+        400_000,
+        600_000,
+        800_000,
+        1_000_000,
+    ]
+
+    tick_labels = [
+        "0",
+        "200k",
+        "400k",
+        "600k",
+        "800k",
+        "1M",
+    ]
+
+    ax.set_xticks(
+        tick_values,
+        tick_labels,
+    )
+
+    ax.set_xlim(
+        0,
+        1_000_000,
+    )
+
+    ax.grid(
+        True,
+        alpha=0.25,
+    )
+
+    ax.legend(
+        title="Algoritmo"
+    )
+
+    save_figure(
+        fig,
+        output_dir / "learning_curve.png",
+        dpi,
+    )
 
 
 def load_test_summaries(
@@ -258,9 +431,18 @@ def plot_final_reward_by_seed(input_dir: Path, output_dir: Path, dpi: int) -> No
         label=f"PPO (media = {ppo_mean:.1f})",
     )
 
-    ax.set_title("Final test: reward medio per training seed")
-    ax.set_xlabel("Training seed")
-    ax.set_ylabel("Mean test reward")
+    ax.set_title(
+        "Test finale: reward medio per training seed"
+    )
+
+    ax.set_xlabel(
+        "Training seed"
+    )
+
+    ax.set_ylabel(
+        "Reward medio sul test finale"
+    )
+    
     ax.set_xticks(x, [str(seed) for seed in seeds])
     ax.grid(True, axis="y", alpha=0.25)
     ax.legend(title="Algoritmo")
@@ -317,9 +499,18 @@ def plot_final_track_completion_by_seed(
         label=f"PPO (media = {100.0 * ppo_mean:.1f}%)",
     )
 
-    ax.set_title("Final test: track completion per training seed")
-    ax.set_xlabel("Training seed")
-    ax.set_ylabel("Mean track completion")
+    ax.set_title(
+        "Test finale: completamento medio della pista"
+    )
+
+    ax.set_xlabel(
+        "Training seed"
+    )
+
+    ax.set_ylabel(
+        "Completamento medio della pista"
+    )
+
     ax.set_xticks(x, [str(seed) for seed in seeds])
     ax.set_ylim(0.0, 1.0)
     ax.yaxis.set_major_formatter(PercentFormatter(xmax=1.0))
@@ -374,9 +565,18 @@ def plot_final_reward_per_track(input_dir: Path, output_dir: Path, dpi: int) -> 
             label=DISPLAY_NAME[algorithm],
         )
 
-    ax.set_title("Final test: reward medio sulle 30 piste")
-    ax.set_xlabel("Test seed")
-    ax.set_ylabel("Mean reward across training seeds")
+    ax.set_title(
+        "Test finale: reward medio sulle 30 piste"
+    )
+
+    ax.set_xlabel(
+        "Test seed"
+    )
+
+    ax.set_ylabel(
+        "Reward medio tra i training seed"
+    )
+    
     ax.grid(True, alpha=0.25)
     ax.legend(title="Algoritmo")
 
