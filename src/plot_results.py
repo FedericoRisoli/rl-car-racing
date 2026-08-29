@@ -325,7 +325,6 @@ def plot_learning_curve(input_dir: Path, output_dir: Path, dpi: int) -> None:
         "Reward medio di validazione"
     )
 
-    # Asse più leggibile rispetto alla notazione 1e6.
     tick_values = [
         0,
         200_000,
