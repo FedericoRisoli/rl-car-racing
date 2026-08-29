@@ -8,20 +8,7 @@ Scopo
 Questo script legge esclusivamente:
 
     aggregated_results/combined_test_episodes.csv
-
-e produce statistiche descrittive facili da spiegare e studiare.
-
-NON usa:
-- Cohen's d;
-- test t;
-- test di Wilcoxon;
-- permutation test;
-- bootstrap;
-- p-value.
-
-L'obiettivo è mantenere l'analisi coerente con il livello del progetto e
-rendere molto chiaro cosa significano i numeri.
-
+    
 Struttura dei dati finali
 -------------------------
 Nel protocollo attuale:
