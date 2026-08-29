@@ -1502,6 +1502,29 @@ def build_training_outputs(
 
         session_summaries = load_run_summaries(run_dir)
 
+        # Conta le sessioni reali anche attraverso le cartelle di resume.
+        resume_dirs = [
+            path
+            for path in run_dir.iterdir()
+            if path.is_dir()
+            and path.name.startswith("resume_")
+        ]
+
+        # Ogni run ha una sessione iniziale, più una per ogni resume.
+        training_sessions = 1 + len(resume_dirs)
+
+        # Numero di sessioni per cui possediamo effettivamente un run_summary.json.
+        session_summaries_found = len(
+            session_summaries
+        )
+
+        # Il tempo totale è completo solo se possediamo
+        # il summary di ogni sessione.
+        elapsed_time_complete = (
+            session_summaries_found
+            == training_sessions
+        )
+
         # Sommare i tempi delle sessioni permette di ricostruire il costo totale
         # anche quando un training e' stato interrotto e poi ripreso.
         elapsed_total = 0.0
@@ -1559,8 +1582,16 @@ def build_training_outputs(
                 "best_timestep": best["timesteps"] if best else None,
                 "best_mean_validation_reward": best["mean_reward"] if best else None,
                 "best_std_validation_reward": best["std_reward"] if best else None,
-                "training_sessions": len(session_summaries),
-                "elapsed_seconds_total": elapsed_total,
+                "training_sessions": training_sessions,
+                "session_summaries_found": session_summaries_found,
+                "elapsed_seconds_total": (
+                    elapsed_total
+                    if elapsed_time_complete
+                    else None
+                ),
+                "elapsed_time_complete": int(
+                    elapsed_time_complete
+                ),
             }
         )
 
@@ -1819,7 +1850,9 @@ def save_all_outputs(
             "best_mean_validation_reward",
             "best_std_validation_reward",
             "training_sessions",
+            "session_summaries_found",
             "elapsed_seconds_total",
+            "elapsed_time_complete",
         ],
     )
     outputs["training_run_summary"] = str(training_path)
