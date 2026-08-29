@@ -33,8 +33,7 @@ def parse_args():
         type=str,
         default=None,
         help=(
-            "Path to the saved model. If omitted, uses "
-            "models/<algo>_smoke_seed_<train-seed>.zip."
+            "Path to the saved model."
         ),
     )
 
@@ -42,7 +41,7 @@ def parse_args():
         "--train-seed",
         type=int,
         default=0,
-        help="Seed used to train the model (used for naming/metadata).",
+        help="Seed used to train the model.",
     )
 
     parser.add_argument(
@@ -78,7 +77,7 @@ def parse_args():
         "--device",
         type=str,
         default="cpu",
-        help="SB3 device used for inference (default: cpu).",
+        help="SB3 device used for inference.",
     )
 
     visual = parser.add_mutually_exclusive_group()
