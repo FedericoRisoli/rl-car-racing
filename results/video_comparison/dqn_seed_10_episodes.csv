@@ -1,0 +1,2 @@
+algorithm,model_path,training_seed,evaluation_seed,episode,episode_reward,episode_length,completed,termination_reason,visited_tiles,total_tiles,track_completion,lap_complete_percent,terminated,truncated,deterministic
+dqn,best_models\dqn_final_1M_seed_10\dqn_final_1M_seed_10_best.zip,10,1005,1,482.8220858895658,1000,0,time_limit,190,326,0.5828220858895705,0.95,0,1,1
