@@ -1,0 +1,2 @@
+algorithm,training_seed,episodes,mean_reward,std_reward,median_reward,min_reward,max_reward,completion_rate,mean_episode_length,std_episode_length,mean_track_completion,deterministic
+dqn,12,30,616.1756503817056,178.58010858568593,602.0143800554779,248.48484848484395,881.4126394051933,0.0,1000.0,0.0,0.7161756503817162,1
