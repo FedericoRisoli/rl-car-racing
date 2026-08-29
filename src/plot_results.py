@@ -37,6 +37,11 @@ import numpy as np
 ALGORITHMS = ("dqn", "ppo")
 DISPLAY_NAME = {"dqn": "DQN", "ppo": "PPO"}
 
+SEED_COLORMAPS = {
+    "dqn": plt.cm.Blues,
+    "ppo": plt.cm.Oranges,
+}
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -224,7 +229,7 @@ def plot_learning_curve(input_dir: Path, output_dir: Path, dpi: int) -> None:
         mean_line = ax.plot(
             timesteps,
             means,
-            linewidth=2.4,
+            linewidth=2.8,
             label=DISPLAY_NAME[
                 algorithm
             ],
@@ -235,7 +240,7 @@ def plot_learning_curve(input_dir: Path, output_dir: Path, dpi: int) -> None:
             mean_line.get_color()
         )
 
-        # Singoli training seed.
+        # Singoli training seed con sfumature diverse.
         training_seeds = sorted(
             seed
             for (
@@ -244,6 +249,19 @@ def plot_learning_curve(input_dir: Path, output_dir: Path, dpi: int) -> None:
             ) in individual
             if algo == algorithm
         )
+
+        cmap = SEED_COLORMAPS[algorithm]
+
+        if len(training_seeds) == 1:
+            shade_values = [0.60]
+        else:
+            # Evita i colori troppo chiari o troppo scuri.
+            shade_values = np.linspace(0.40, 0.75, len(training_seeds))
+
+        seed_colors = {
+            seed: cmap(shade)
+            for seed, shade in zip(training_seeds, shade_values)
+        }
 
         for training_seed in training_seeds:
 
@@ -279,9 +297,9 @@ def plot_learning_curve(input_dir: Path, output_dir: Path, dpi: int) -> None:
             ax.plot(
                 seed_timesteps,
                 seed_rewards,
-                linewidth=0.8,
-                alpha=0.18,
-                color=line_color,
+                linewidth=1.0,
+                alpha=0.45,
+                color=seed_colors[training_seed],
                 zorder=1,
             )
 
