@@ -1,0 +1,85 @@
+{
+    "analysis_version": 2,
+    "protocol": {
+        "training_seeds": [
+            10,
+            11,
+            12,
+            13
+        ],
+        "test_tracks": [
+            1000,
+            1001,
+            1002,
+            1003,
+            1004,
+            1005,
+            1006,
+            1007,
+            1008,
+            1009,
+            1010,
+            1011,
+            1012,
+            1013,
+            1014,
+            1015,
+            1016,
+            1017,
+            1018,
+            1019,
+            1020,
+            1021,
+            1022,
+            1023,
+            1024,
+            1025,
+            1026,
+            1027,
+            1028,
+            1029
+        ],
+        "n_training_seeds": 4,
+        "n_test_tracks": 30,
+        "n_total_episodes": 240
+    },
+    "main_results": {
+        "ppo_mean_reward": 750.8518011211565,
+        "dqn_mean_reward": 480.0363428646947,
+        "reward_difference_ppo_minus_dqn": 270.81545825646185,
+        "reward_improvement_vs_dqn_percent": 56.41561566783188,
+        "ppo_mean_track_completion": 0.851140134454504,
+        "dqn_mean_track_completion": 0.5800363428647023,
+        "track_completion_difference_percentage_points": 27.11037915898017,
+        "ppo_std_reward_between_training_seeds": 56.724809095991766,
+        "dqn_std_reward_between_training_seeds": 93.50508605342341
+    },
+    "training_seed_comparison": {
+        "ppo_reward_wins": 4,
+        "dqn_reward_wins": 0,
+        "ties": 0
+    },
+    "test_track_comparison": {
+        "ppo_reward_wins": 30,
+        "dqn_reward_wins": 0,
+        "ties": 0
+    },
+    "individual_seed_track_comparison": {
+        "reward": {
+            "ppo_wins": 106,
+            "dqn_wins": 14,
+            "ties": 0,
+            "total_comparisons": 120
+        },
+        "track_completion": {
+            "ppo_wins": 106,
+            "dqn_wins": 14,
+            "ties": 0,
+            "total_comparisons": 120
+        }
+    },
+    "interpretation": {
+        "important_note": "Le statistiche principali vengono interpretate soprattutto tra i training seed, perché ogni training seed rappresenta un processo di apprendimento indipendente.",
+        "std_note": "La deviazione standard tra training seed misura quanto cambiano le prestazioni medie dei modelli al cambiare del seed di training."
+    }
+}
