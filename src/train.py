@@ -22,10 +22,20 @@ from env import (
     MAX_EPISODE_STEPS,
 )
 
+# Architettura CNN usata da entrambi gli algoritmi per elaborare le osservazioni di CarRacing-v2 
 POLICY = "CnnPolicy"
+
+# Dispositivo su cui PyTorch esegue i calcoli della rete neurale
 DEVICE = "cpu"
+
+## Costanti specifiche DQN
+# Dimensione del replay buffer: in questo caso può contenere fino a 10.000 transizioni (s_t, a_t, r_t, s_{t+1})
 DQN_BUFFER_SIZE = 10_000
+
+# Numero di timesteps oltre il quale DQN inizia ad aggiornare la propria rete neurale
 DQN_LEARNING_STARTS = 500
+
+# La fase durante la quale epsilon viene progressivamente ridotto occupa il 50% del training totale.
 DQN_EXPLORATION_FRACTION = 0.5
 
 # Funzione che converte il numero di timesteps in un'etichetta compatta
